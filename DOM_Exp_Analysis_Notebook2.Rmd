@@ -1,0 +1,822 @@
+---
+title: "DOM Experiment Analysis Notebook"
+author: "Cat Luria"
+date: "July 15, 2015"
+output: 
+  pdf_document:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+
+---
+\newpage
+```{r, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+---
+
+
+#Getting started
+
+First, load all the necessary packages.
+
+```{r libraries, echo=FALSE, warning=FALSE}
+#libraries
+library(data.table)
+library(BiodiversityR)
+library(vegan)
+library(ggplot2)
+library(wesanderson)
+library(scales)
+library(reshape2)
+library(RColorBrewer)
+library(gdata)
+library(plyr)
+library("phyloseq")
+library(scales)
+library(grid)
+library(Rcpp)
+library(RcppEigen)
+```
+
+```{r multiplot_function, echo=FALSE}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+
+```{r get_data, echo=FALSE}
+
+setwd("/Users/cmluria/Documents/Documents/Thesis Chapters/DOM/16S_library_analysis")
+
+otutable <- fread('otu_table_mc2_DOM_even_from_biom.txt', skip=1)
+
+meta <- fread('DOM.map.txt')
+#meta$SamplingDate <- as.Date(meta$SamplingDate,format = '%m/%d/%Y')
+#order meta according to MBL_library ID
+idx_meta <- order(meta$'#SampleID', decreasing=FALSE)
+meta_sorted <- meta[idx_meta]
+#meta_sorted <- meta_sorted[(106:186),]
+```
+
+```{r remove_chloroplasts, echo=FALSE}
+#creating a table that has chloroplasts removed
+#first create index of all rows with "organelle"
+#then invert, to get index of rows without "organelle"
+#apply index to original table
+chlor <- grep('Chloroplast', x=otutable$taxonomy)
+idx_chlor <- grep('Chloroplast',x = otutable$taxonomy, invert=TRUE)
+otutable_bac <- otutable[i=idx_chlor]
+```
+
+The OTU table has `r dim(otutable)[1]` OTUs to begin with. After removing any OTUs with "chloroplast" in the taxonomy, there are `r dim(otutable_bac)[1]` OTUs.
+
+
+#Alpha Diversity
+
+```{r manip_otus, echo=FALSE}
+
+#convert the otu table to a data frame
+otutable_bac <- as.data.frame(otutable_bac)
+#grab the columns with data
+numberofsamples <- dim(otutable_bac)[2] - 1
+otutable_bac_samples <- otutable_bac[,(2:numberofsamples)]
+#transpose
+otutable_bac_samples_t <- t(otutable_bac_samples)
+#use column 1 from original table as column names in new table
+colnames(otutable_bac_samples_t) <- otutable_bac[,1]
+
+new_otutable_bac_samples_t <- otutable_bac_samples_t[order(row.names(otutable_bac_samples_t)), ]
+otutable_bac_samples_t <- as.data.frame(new_otutable_bac_samples_t)
+```
+
+```{r calculate_richness, echo=FALSE}
+
+# otutable_meta_DOM_df <- as.data.frame(otutable_meta_DOM)
+# otutable_samples_DOM <- otutable_meta_DOM_df[,-(18208:18232)]
+
+#calculate richness by site
+richness <- diversityresult(otutable_bac_samples_t, 
+                              index='richness', method='s')
+#add metadata to richness
+diversitytable <- cbind(meta_sorted, richness)
+
+```
+
+```{r anova_DOM, echo=FALSE, include=FALSE}
+# aov.richness.month= aov(richness~Month,data=diversitytable_SWI)
+# summary(aov.richness.month)
+# pvalue <- summary(aov.richness.month)[[1]][, 5][1]
+# 
+# tuk<- TukeyHSD(aov.richness.month)
+# tuk
+
+```
+
+```{r aggregate_richness_by_treatment, echo=FALSE, fig.cap="Changes in richness under different experimental treatments."}
+
+cdata <- ddply(diversitytable, c("Experiment", "Timepoint", "Treatment"), summarise,
+               N = length(richness),
+               mean = mean(richness),
+               sd   = sd(richness),
+               se   = sd / sqrt(N)
+)
+
+cdata <- as.data.table(cdata)
+#cdata$Experiment <- as.factor(cdata$Experiment)
+cdata1 <- cdata[which(cdata$Experiment=="1")]
+cdata2 <- cdata[which(cdata$Experiment=="2")]
+cdata3 <- cdata[which(cdata$Experiment=="3")]
+cdata4 <- cdata[which(cdata$Experiment=="4")]
+
+p1 <- ggplot(cdata1, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    ggtitle("August") +
+    theme_bw() 
+    #theme(legend.position="none")
+   
+p2 <- ggplot(cdata2, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    ggtitle("September") +
+    theme_bw() 
+    #theme(legend.position="none")
+   
+p3 <- ggplot(cdata3, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    ggtitle("October") +
+    theme_bw() 
+    #theme(legend.position="none")
+
+p4 <- ggplot(cdata4, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    ggtitle("December") +
+    theme_bw() 
+    #theme(legend.position="none")
+   
+multiplot(p1, p2, p3, p4, cols=2)
+
+```
+
+
+```{r, echo=FALSE}
+# otutable_meta_DOM_samples <- as.data.frame(otutable_meta_DOM[,(1:18207)])
+# otutable_bac.mds <- metaMDS(otutable_meta_DOM_samples, 
+#                                     distance="bray", k=2, autotransform=FALSE)
+# #convert resulting MDS coordinates to a data frame
+# otutable_bac.mds.points <- as.data.frame(otutable_bac.mds$points)
+# #add site codes and other factors to data frame
+# coded.otutable_bac.mds <- cbind(otutable_bac.mds.points, meta_sorted)
+```
+
+Richness dropped off dramtically in Control, f/2+, and DOM+ carboys over the course of all four 10-day incubation experiments. Richness was higher in Control carboys than DOM+ carboys at the midpoint of the August and September experiments. Richness began to rebound in the f/2+ and DOM+ carboys toward the end of the October experiment, perhaps suggesting acclimation. The December experiment results are similar to those from August and September, except that the DOM+ carboys had greater richness than the Control carboys at time 0, suggesting some sort of contamination.
+
+\newpage
+
+# Taxa plots
+```{r set_up_taxa_table, echo=FALSE, eval=FALSE}
+# # read in the data (had to manually change OTU column heading before reading in file)
+# taxaL3 <- fread("cdout_DOM/taxa_plots/table_mc82638_sorted_L3.txt", skip=1)
+# idx_chlor <- grep('Chloroplast', x = taxaL3$OTU.ID, invert=TRUE)
+# taxaL3_bac <- taxaL3[idx_chlor]
+# 
+# #function to transpose a data table
+# tdt <- function(inpdt){
+#   transposed <- t(inpdt[,-1,with=F]);
+#   colnames(transposed) <- inpdt[[1]];
+#   transposed <- data.table(transposed, keep.rownames=T);
+#   setnames(transposed, 1, names(inpdt)[1]);
+#   return(transposed);
+# }
+# 
+# taxaL3_bac_t <- tdt(taxaL3_bac)
+# 
+# #attach info from meta_Sorted, using library ID as the key
+# setkey(meta_sorted,"#SampleID")
+# setkey(taxaL3_bac_t,"OTU.ID")
+# taxa_meta <- taxaL3_bac_t[meta_sorted]
+# 
+# # other formatting
+# # convert to dataframe
+# taxa_meta_df <- as.data.frame(taxa_meta)
+# #make sure dates are read as dates
+# taxa_meta_df$SamplingDate <- as.Date(taxa_meta_df$SamplingDate)
+# 
+# # get rid of all the metadata
+# taxa <- taxa_meta_df[,-(171:180)]
+# 
+# #transpose the dataframe after removing metadata,m drop column 1
+# taxa_t <- t(taxa[,-1])
+# # use column 1 as column names for taxa_t
+# colnames(taxa_t) <- taxa[,1]
+
+```
+
+```{r modify_taxa_names, echo=FALSE, eval=FALSE}
+#functions to modify the taxa column
+removeUptoUnderscore <- function(x){
+  location <- regexpr('_', x)         # find the location in string of the first ';'
+  newx <- substring(x, location+2)   # return everything after that location
+  return(newx)
+}
+
+removeUptoPhylum <- function(x){
+  location <- regexpr('p_', x)         # find the location in string of the first ';'
+  newx <- substring(x, location+3)   # return everything after that location
+  return(newx)
+}
+
+removeUptoClass <- function(x){
+  location <- regexpr('c_', x)         # find the location in string of the first ';'
+  newx <- substring(x, location+3)   # return everything after that location
+  return(newx)
+}
+
+#create table just for functions
+taxa_newnames <- taxa_t
+
+#apply all three functions
+rownames(taxa_newnames) <- removeUptoUnderscore(rownames(taxa_newnames))
+rownames(taxa_newnames) <- removeUptoPhylum(rownames(taxa_newnames))
+rownames(taxa_newnames) <- removeUptoClass(rownames(taxa_newnames))
+
+#check after functions, assign new name
+taxa_mod <- as.data.frame(taxa_newnames)
+```
+
+```{r sort_taxa_table, echo=FALSE, eval=FALSE}
+# get row means
+taxa_mod$average <- apply(taxa_mod, 1, mean)
+# apply index to table to sort according to average relative abundance
+idx <- order(taxa_mod$average, decreasing = TRUE)
+taxa_sorted <- taxa_mod[idx, ]
+
+#set the value for relative abundance below which taxa should be "other"
+mythreshold<-0.005
+
+# create a column with the threshold
+taxa_sorted$highlow <- 
+  ifelse( taxa_sorted$average > mythreshold, 
+          rownames(taxa_sorted), 'Other' )
+```
+
+```{r manip_for_taxa_table, eval=FALSE, echo=FALSE}
+#manipulate data and conver to long format for making taxa plots
+#transpose again, need to get rid of last two columns (average and highlow)
+taxa_sorted_t <- t(taxa_sorted[,-(82:83)])
+#make highlow column into column names in transposed table
+colnames(taxa_sorted_t) <- taxa_sorted[,83]
+taxa_sorted_t_IDs <- cbind(taxa_meta_df$Experiment, taxa_meta_df$Day, taxa_meta_df$Treatment, taxa_sorted_t)
+
+taxa_melt_IDs <- melt(taxa_sorted_t_IDs, id.vars=c("V1", "V2", "V3")
+                    )
+
+#rownames(taxa_sorted_t) <- taxa_meta_SWI$SamplingDate
+taxa_sorted_melt <- melt(taxa_sorted_t)
+colnames(taxa_sorted_melt) <- c("Sample", "Class", "RelativeAbundance")
+
+
+
+# meta_melt_df <- cbind(taxa_meta_df$Experiment, taxa_meta_df$Day, 
+#                       taxa_meta_df$Treatment)
+# colnames(meta_melt_df) <- c("Experiment", "Day", "Treatment")
+# meta_melt <- melt(meta_melt_df)
+# colnames(meta_melt) <- c("Experiment", "Day", "Treatment")
+
+cdata <- ddply(taxa_sorted_melt, c("Sample", "Class"), summarise,
+               N = length(RelativeAbundance),
+               mean = mean(RelativeAbundance),
+               sd   = sd(RelativeAbundance),
+               se   = sd / sqrt(N)
+)
+
+```
+
+ 
+```{r import_data_for_phyloseq, echo=FALSE, warning=FALSE, include=FALSE}
+##workflow from here: https://github.com/joey711/phyloseq/issues/336
+biom_file = "table_even82638_json.biom" 
+map_file = "DOM.map.txt" 
+tree_file = "rep_set.tre" 
+
+tree <-read_tree(tree_file)
+map <- import_qiime_sample_data(map_file)
+
+mydata <- import_biom(biom_file,tree_file,parseFunction=parse_taxonomy_greengenes)
+#warnings(mydata)
+
+#intersect(mydata)
+mydata <- merge_phyloseq(mydata,map)
+
+mydata
+
+ntaxa(mydata)
+sample_names(mydata)
+rank_names(mydata)
+sample_variables(mydata)
+otu_table(mydata)[1:10, 1:5]
+tax_table(mydata)[1:10, 1:5]
+
+get_taxa_unique(mydata, "Phylum")
+get_taxa_unique(mydata, "Class")
+
+```
+
+Taxa plots from each of the four experiments suggest that container effects are very strong: similar changes occur in both the control and treatment carboys. There does appear to be a difference in timing. By day 6, community composition in the DOM+ carboys has already shifted dramatically and closely resembles composition at day 10. Changes appear to occur more slowly in the control carboys with composition at day 6 representing a more intermediate state. This proposed lag effect can be seen in the August, September, and December experiments. The data from the October experiment are quite different, as discussed below.
+
+##August
+At the beginning of the August experiment, Pelagibacteria (alphaproteobacteria), slow-growing oligotrophs, were dominant, but were replaced by gammaproteobacteria (Collwellia) over the course of the experiment. 
+
+A very brief search for Collwellia yielded some interesting results:
+
+1. Collwellia were associated with the BP oil spill and supposedly digested alkanes and aromatics
+[linked phrase](http://www.ncbi.nlm.nih.gov/pubmed/22616650)
+[linked phrase](https://books.google.com/books?id=cQANAwAAQBAJ&pg=PA26&lpg=PA26&dq=Collwellia&source=bl&ots=fQ7kEClmmF&sig=Lz1kFGSRtdNgWGzvBZY0fXHBZlE&hl=en&sa=X&ved=0CDUQ6AEwBWoVChMIp879iIH8xgIV1xuSCh1xpQQp#v=onepage&q=Collwellia&f=false) 
+2. Bidle and Azam conducted experiments in which they allowed diatom detritus to be colonized by natural bacterial assemblages. In one experiment, the pos-incubation assemblage was characterized by y *Collwellia demingiae*. 
+[linked phrase](http://aslo.net/lo/toc/vol_46/issue_7/1606.pdf)
+3. The group contains some known psychrophiles
+[linked phrase](http://www.ncbi.nlm.nih.gov/pubmed/16043709)
+
+Flavobacteria also increased over the course of the experiment but did not comprise a large fraction of the community, even at day 10. 
+
+```{r taxa_plots_exp1, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+exp1 <- subset_samples(mydata, Experiment=="1")
+TopNOTUs_1 <- names(sort(taxa_sums(exp1), TRUE)[1:20])
+exp1a   <- prune_taxa(TopNOTUs_1, exp1)
+plot_bar(exp1a, x="Treatment", fill="Family", facet_grid=~Day, title="August")
+```
+
+\newpage
+
+##September
+Similar trends (declining Pelagibacteria and increasing Collwellia) occurred during the September experiment. Chloroplast sequences (grey blocks) were present at the beginning of the experiment but had largely disappeared by day 10. Polaribacter (Flavobacteria blocks) was prevalent in both Control and DOM+ carboys on Day 10. Carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
+
+```{r taxa_plot_exp2, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+exp2 <- subset_samples(mydata, Experiment=="2")
+TopNOTUs_2 <- names(sort(taxa_sums(exp2), TRUE)[1:20])
+exp2a   <- prune_taxa(TopNOTUs_2, exp2)
+plot_bar(exp2a, x="Treatment", fill="Family", facet_grid=~Day, title="September")
+```
+
+\newpage
+
+##October
+The results from the October experiment, which included an f/2+ treatment, are strange. At the beginning of the experiment, Rickettsiales comprises large fractions of all of the communities. The grey blocks are made up of Haptophyceae (chloroplasts) and Oceanospirillales. At day 6, we have no data from the control carboys. The f/2+ and DOM+ carboys are both dominated by flavobacteria. These flavobacter OTUs are classified as Polaribacter. The DOM+ carboys also have a significant block of Alteromonadales. On day 10, the control and f/2+ carboys are very similar, while the DOM+ carboys are dominated to a greater extent by Polaribacter. A few additional samples were collected on day 11, which I find to be suspect. My inclination for this experiment would be to only consider data from day 0 and day 10. Again, carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
+
+```{r taxa_plot_exp3, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+exp3 <- subset_samples(mydata, Experiment=="3")
+TopNOTUs_3 <- names(sort(taxa_sums(exp3), TRUE)[1:20])
+exp3a   <- prune_taxa(TopNOTUs_3, exp3)
+plot_bar(exp3a, x="Treatment", fill="Family", facet_grid=~Day, title="October")
+```
+
+\newpage
+
+##December
+In the December experiment, the day 0 communities had a number of chloroplasts (grey blocks). Both Control and DOM+ carboys acquired Polaribacter (Flavobacteria) over the course of the experiment. Collwellia appeared in the DOM+ carboys but not the Control carboys.
+
+```{r taxa_plot_exp4, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+exp4 <- subset_samples(mydata, Experiment=="4")
+TopNOTUs_4 <- names(sort(taxa_sums(exp4), TRUE)[1:20])
+exp4a   <- prune_taxa(TopNOTUs_4, exp4)
+plot_bar(exp4a, x="Treatment", fill="Family", facet_grid=~Day, title="December")
+```
+
+\newpage
+
+#NMDS
+
+```{r NMDS_large_dataset, eval=FALSE}
+# for large datasets that crash R
+# didn't need for this dataset
+# compile the c++ code from within R
+Rcpp::sourceCpp('bc_sparse.cpp')
+
+dis <- my_bray_curtis(otutable_bac_samples_t)
+m <- monoMDS(dis)
+plot(m)
+```
+
+```{r NMDS_regular, echo=FALSE, fig.cap="NMDS of samples from four DOM experiments (conducted in August, September, October, and December 2013). Two treatment (Control and DOM+) are shown, one (f/2+ is not). Carboys were samples on days 0, 6, and 10 except in one case when samples were also collected on day 11."}
+mds <- metaMDS(otutable_bac_samples_t, dist="bray", k=2, autotransform=F)
+coded.mds <- cbind(mds$points, meta_sorted)
+
+coded.mds$Day <- as.factor(coded.mds$Day)
+coded.mds$Treatment <- as.factor(coded.mds$Treatment)
+coded.mds$Experiment <- as.factor(coded.mds$Experiment)
+# p1 <- ggplot(coded.mds, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+#   geom_point(size=6) +
+#   scale_shape_manual(values=c(1, 10, 16, 20)) +
+#   scale_color_manual(values=c("#000000", "#D55E00", "red")) +
+#   theme_bw()
+# p1
+# 
+# p2 <- ggplot(coded.mds, aes(x=MDS1, y=MDS2, color=Treatment, shape=Experiment)) +
+#   geom_point(size=6) +
+#   scale_shape_manual(values=c(1, 10, 16, 20)) +
+#   scale_color_manual(values=c("#000000", "#D55E00", "red")) +
+#   theme_bw()
+# p2
+
+plot(mds, display = "sites", choices = c(1, 2),
+     type = "n", shrink = FALSE, main="", xlim=c(-1.5, 1.8))
+
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="0")], col="black")
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="6")], col="black", pch=10)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="10")], col="black", pch=16)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="0")], col="black", pch=0)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="6")], col="black", pch=7)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="1"
+                            & coded.mds$Day=="10")], col="black", pch=15)
+
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="0")], col="blue")
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="6")], col="blue", pch=10)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="10")], col="blue", pch=16)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="0")], col="blue", pch=0)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="6")], col="blue", pch=7)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="2"
+                            & coded.mds$Day=="10")], col="blue", pch=15)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="0")], col="orange")
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="6")], col="orange", pch=10)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], col="orange", pch=16)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="0")], col="orange", pch=0)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="6")], col="orange", pch=7)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], col="orange", pch=15)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="0")], col="red")
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="6")], col="red", pch=10)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="Control" 
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="Control"
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="10")], col="red", pch=16)
+
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="0")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="0")], col="red", pch=0)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="6")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="4"
+                            & coded.mds$Day=="6")], col="red", pch=7)
+points(coded.mds$MDS1[which(coded.mds$Treatment=="DOM" 
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], 
+       coded.mds$MDS2[which(coded.mds$Treatment=="DOM"
+                            & coded.mds$Experiment=="3"
+                            & coded.mds$Day=="10")], col="red", pch=15)
+
+legend(1.2,0.75, 
+       c("Control","DOM+"),
+       pch=c(1,0),
+       bty="n") 
+legend(1.2,0.35, 
+       c("Aug","Sept","Oct","Dec"),
+       pch=c(16,16,16,16),
+       col=c("black", "blue", "orange", "red"),
+       bty="n") 
+legend(1.2,-0.25, 
+       c("Day 0","Day 6", "Day 10", "Day 11"),
+       pch=c(0,7,15,15),
+       bty="n") 
+
+```
+
+```{r NMDS_multiplot, eval=FALSE, echo=FALSE}
+mds <- metaMDS(otutable_bac_samples_t, dist="bray", k=2, autotransform=F)
+coded.mds <- cbind(mds$points, meta_sorted)
+
+coded.mds$Day <- as.factor(coded.mds$Day)
+coded.mds$Treatment <- as.factor(coded.mds$Treatment)
+coded.mds$Experiment <- as.factor(coded.mds$Experiment)
+
+p1 <- ggplot(coded.mds, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+  geom_point(size=6) +
+  scale_shape_manual(values=c(1, 10, 16, 21)) +
+  scale_color_manual(values=c("#000000", "#D55E00", "#009E73")) +
+  theme_bw()
+p1
+
+p2 <- ggplot(coded.mds, aes(x=MDS1, y=MDS2, color=Day)) +
+  geom_point(size=6) +
+  #scale_shape_manual(values=c(1, 10, 16, 21)) +
+  scale_color_manual(values=c("#000000", "#E69F00", "#56B4E9", "#009E73")) +
+  theme_bw()
+p2
+
+p2 <- ggplot(coded.mds[which(coded.mds$Experiment=="1")], aes(x=MDS1, y=MDS2, color=Treatment)) +
+  geom_point(size=6) +
+  #scale_shape_manual(values=c(1, 10, 16, 21)) +
+  scale_color_manual(values=c("#000000", "#E69F00", "#56B4E9")) +
+  theme_bw()
+p2
+
+p2 <- ggplot(coded.mds, aes(x=MDS1, y=MDS2, color=Treatment)) +
+  geom_point(size=6, alpha=0.5) +
+  #scale_shape_manual(values=c(1, 10, 16, 21)) +
+  scale_color_manual(values=c("#000000", "#E69F00", "#56B4E9")) +
+  theme_bw()
+p2
+
+```
+
+
+##August
+
+The Control and DOM+ carboys are similar to each other on both Day 0 and Day 10. As seen previously in the taxa plots, DOM+ carboys seems to more rapidly approach final Day 10 community composition. Day 6 DOM+ carboys are clustered with Day 10 DOM+ carboys, while the Day 6 control carboys form their own cluster. Note that the replicate carboys do, in fact, cluster together.
+
+
+```{r, echo=FALSE, eval=FALSE}
+
+coded.mds$Experiment <- as.factor(coded.mds$Experiment)
+coded.mds$Day <- as.factor(coded.mds$Day)
+coded.mds_1 <- coded.mds[which(coded.mds$Experiment=="1")]
+coded.mds_2 <- coded.mds[which(coded.mds$Experiment=="2")]
+coded.mds_3 <- coded.mds[which(coded.mds$Experiment=="3")]
+coded.mds_4 <- coded.mds[which(coded.mds$Experiment=="4")]
+
+p1 <- ggplot(coded.mds1, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+  geom_point(size=6) +
+  scale_shape_manual(values=c(1, 10, 16)) +
+  scale_color_manual(values=c("#000000", "#D55E00")) +
+  ggtitle("August") +
+  theme_bw()
+p1
+```
+
+##September
+
+The September NMDS results are similar to the August results. Day 0 and Day 10 carboys all group together regardless of treatment. The Day 6 DOM+ carboys are more similar to the Day 10 cluster, while the Day 6 Control carboys are more similar to the Day 0 cluster.
+
+```{r, echo=FALSE, eval=FALSE}
+p2 <- ggplot(coded.mds_2, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+  geom_point(size=6) +
+  scale_shape_manual(values=c(1, 10, 16)) +
+  scale_color_manual(values=c("#000000", "#D55E00")) +
+  ggtitle("September") +
+  theme_bw()
+p2
+```
+
+##October
+
+Recall the the October experiment sampling scheme had a few discrepancies (no Control of Day 6, additional samples collected on Day 11). In this experiment, the f/2+ carboys clustered with the DOM+ carboys midway through the experiment but clustered with the control carboys at the end of the experiment. The DOM+ carboys changed between Day 0 and Day 6 but did not change after that. 
+
+```{r, echo=FALSE, eval=FALSE}
+p3 <- ggplot(coded.mds_3, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+  geom_point(size=6) +
+  scale_shape_manual(values=c(1, 10, 16, 18)) +
+  scale_color_manual(values=c("#000000", "#D55E00", "#56B4E9")) +
+  ggtitle("October") +
+  theme_bw()
+p3
+```
+
+##December
+
+In this experiment, both the Control carboys and the DOM+ carboys appeared to reach their final states by Day 6.
+
+```{r, echo=FALSE, eval=FALSE}
+p4 <- ggplot(coded.mds_4, aes(x=MDS1, y=MDS2, color=Treatment, shape=Day)) +
+  geom_point(size=6) +
+  scale_shape_manual(values=c(1, 10, 16)) +
+  scale_color_manual(values=c("#000000", "#D55E00")) +
+  ggtitle("December") +
+  theme_bw()
+p4
+
+#multiplot(p1,p2,p3,p4, cols=2)
+```
+
+##Add ellipses (not working right now)
+
+```{r NMDS_w_ellipses, echo=FALSE, , eval=FALSE, fig.cap="NMDS without PAL0910. Ellipses represent 95% confidence intervals."}
+#Get MDS stats
+otutable_bac_samples_t1 <- otutable_bac_samples_t[(1:18),]
+meta_sorted1 <- meta_sorted[(1:18),]
+mds1 <- metaMDS(otutable_bac_samples_t1, dist="horn", k=2, autotransform=F)
+coded.mds1 <- cbind(mds$points, meta_sorted)
+
+# coded.mds.exp1 <- coded.mds[which(coded.mds$Experiment=="1")]
+# coded.mds.exp1 <- as.data.frame(coded.mds.exp1)
+# mds.exp1 <- coded.mds.exp1[,(1:3)]
+
+#Make a new data frame, and put Season and Month there
+# to be useful for coloring, and shape of points
+NMDS.Exp1=data.frame(x=mds1$point[,1],
+                y=mds1$point[,2],
+                Treatment=as.factor(meta_sorted1$Treatment),
+                Day=as.factor(meta_sorted1$Day))
+
+#Get spread of points based on season
+plot.new()
+ord <- ordiellipse(mds1, meta_sorted1$Day,
+                 display = "sites", kind ="sd", conf = 0.95, label = T)
+
+
+#Reference: http://stackoverflow.com/questions/13794419/plotting-ordiellipse-function-from-vegan-package-onto-nmds-plot-created-in-ggplo
+#Data frame df_ell contains values to show ellipses. 
+#It is calculated with function veganCovEllipse which is hidden in vegan package. 
+#This function is applied to each level of NMDS (group) 
+#and it uses also function cov.wt to calculate covariance matrix.
+
+veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100) 
+{
+  theta <- (0:npoints) * 2 * pi/npoints
+  Circle <- cbind(cos(theta), sin(theta))
+  t(center + scale * t(Circle %*% chol(cov)))
+}
+
+#Generate ellipse points
+df_ell <- data.frame()
+for(g in levels(NMDS.Exp1$Day)){
+  if(g!="" && (g %in% names(ord))){
+    
+    df_ell <- 
+      rbind(df_ell, cbind(as.data.frame(with(NMDS.Exp1[NMDS.Exp1$Day==g,],
+      veganCovEllipse(ord[[g]]$cov,ord[[g]]$center,ord[[g]]$scale)))
+      ,Season=g))
+  }
+}
+
+head(df_ell)
+
+#Generate mean values from NMDS plot grouped on Countries
+NMDS.Exp1.mean=aggregate(NMDS.Exp1[,1:2],list(group=NMDS.Exp1$Day),mean)
+NMDS.Exp1.mean
+
+#plot
+
+ggplot(data=NMDS.Exp1,aes(x,y,colour="Day")) +
+  annotate("text",x=NMDS.Exp1.mean$x,y=NMDS.Exp1.mean$y,label=NMDS.Exp1.mean$group,size=4) +
+  geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2), size=1, linetype=2) +
+  geom_point(aes(shape=Treatment)) +
+  theme_bw() 
+```
