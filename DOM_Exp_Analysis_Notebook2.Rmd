@@ -92,14 +92,14 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 
 setwd("/Users/cmluria/Documents/Documents/Thesis Chapters/DOM/16S_library_analysis")
 
-otutable <- fread('otu_table_mc2_DOM_even_from_biom.txt', skip=1)
+otutable <- fread('cdout_DOM_bac/otu_table_mc2_DOM_even64271_bac_from_biom.txt', skip=1)
 
 meta <- fread('DOM.map.txt')
-#meta$SamplingDate <- as.Date(meta$SamplingDate,format = '%m/%d/%Y')
+
 #order meta according to MBL_library ID
 idx_meta <- order(meta$'#SampleID', decreasing=FALSE)
 meta_sorted <- meta[idx_meta]
-#meta_sorted <- meta_sorted[(106:186),]
+
 ```
 
 ```{r remove_chloroplasts, echo=FALSE}
@@ -111,9 +111,6 @@ chlor <- grep('Chloroplast', x=otutable$taxonomy)
 idx_chlor <- grep('Chloroplast',x = otutable$taxonomy, invert=TRUE)
 otutable_bac <- otutable[i=idx_chlor]
 ```
-
-The OTU table has `r dim(otutable)[1]` OTUs to begin with. After removing any OTUs with "chloroplast" in the taxonomy, there are `r dim(otutable_bac)[1]` OTUs.
-
 
 #Alpha Diversity
 
@@ -216,15 +213,28 @@ multiplot(p1, p2, p3, p4, cols=2)
 
 ```
 
+\newpage
 
-```{r, echo=FALSE}
-# otutable_meta_DOM_samples <- as.data.frame(otutable_meta_DOM[,(1:18207)])
-# otutable_bac.mds <- metaMDS(otutable_meta_DOM_samples, 
-#                                     distance="bray", k=2, autotransform=FALSE)
-# #convert resulting MDS coordinates to a data frame
-# otutable_bac.mds.points <- as.data.frame(otutable_bac.mds$points)
-# #add site codes and other factors to data frame
-# coded.otutable_bac.mds <- cbind(otutable_bac.mds.points, meta_sorted)
+```{r aug_exp1_richness_plot}
+ggplot(cdata1, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    theme_bw() 
+    #theme(legend.position="none")
+```
+
+```{r dec_exp4_richness_plot}
+ggplot(cdata4, aes(x=Timepoint, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Timepoint") +
+    scale_y_continuous(name="Richness") +
+    theme_bw() 
+    #theme(legend.position="none")
 ```
 
 Richness dropped off dramtically in Control, f/2+, and DOM+ carboys over the course of all four 10-day incubation experiments. Richness was higher in Control carboys than DOM+ carboys at the midpoint of the August and September experiments. Richness began to rebound in the f/2+ and DOM+ carboys toward the end of the October experiment, perhaps suggesting acclimation. The December experiment results are similar to those from August and September, except that the DOM+ carboys had greater richness than the Control carboys at time 0, suggesting some sort of contamination.
@@ -232,126 +242,8 @@ Richness dropped off dramtically in Control, f/2+, and DOM+ carboys over the cou
 \newpage
 
 # Taxa plots
-```{r set_up_taxa_table, echo=FALSE, eval=FALSE}
-# # read in the data (had to manually change OTU column heading before reading in file)
-# taxaL3 <- fread("cdout_DOM/taxa_plots/table_mc82638_sorted_L3.txt", skip=1)
-# idx_chlor <- grep('Chloroplast', x = taxaL3$OTU.ID, invert=TRUE)
-# taxaL3_bac <- taxaL3[idx_chlor]
-# 
-# #function to transpose a data table
-# tdt <- function(inpdt){
-#   transposed <- t(inpdt[,-1,with=F]);
-#   colnames(transposed) <- inpdt[[1]];
-#   transposed <- data.table(transposed, keep.rownames=T);
-#   setnames(transposed, 1, names(inpdt)[1]);
-#   return(transposed);
-# }
-# 
-# taxaL3_bac_t <- tdt(taxaL3_bac)
-# 
-# #attach info from meta_Sorted, using library ID as the key
-# setkey(meta_sorted,"#SampleID")
-# setkey(taxaL3_bac_t,"OTU.ID")
-# taxa_meta <- taxaL3_bac_t[meta_sorted]
-# 
-# # other formatting
-# # convert to dataframe
-# taxa_meta_df <- as.data.frame(taxa_meta)
-# #make sure dates are read as dates
-# taxa_meta_df$SamplingDate <- as.Date(taxa_meta_df$SamplingDate)
-# 
-# # get rid of all the metadata
-# taxa <- taxa_meta_df[,-(171:180)]
-# 
-# #transpose the dataframe after removing metadata,m drop column 1
-# taxa_t <- t(taxa[,-1])
-# # use column 1 as column names for taxa_t
-# colnames(taxa_t) <- taxa[,1]
 
-```
-
-```{r modify_taxa_names, echo=FALSE, eval=FALSE}
-#functions to modify the taxa column
-removeUptoUnderscore <- function(x){
-  location <- regexpr('_', x)         # find the location in string of the first ';'
-  newx <- substring(x, location+2)   # return everything after that location
-  return(newx)
-}
-
-removeUptoPhylum <- function(x){
-  location <- regexpr('p_', x)         # find the location in string of the first ';'
-  newx <- substring(x, location+3)   # return everything after that location
-  return(newx)
-}
-
-removeUptoClass <- function(x){
-  location <- regexpr('c_', x)         # find the location in string of the first ';'
-  newx <- substring(x, location+3)   # return everything after that location
-  return(newx)
-}
-
-#create table just for functions
-taxa_newnames <- taxa_t
-
-#apply all three functions
-rownames(taxa_newnames) <- removeUptoUnderscore(rownames(taxa_newnames))
-rownames(taxa_newnames) <- removeUptoPhylum(rownames(taxa_newnames))
-rownames(taxa_newnames) <- removeUptoClass(rownames(taxa_newnames))
-
-#check after functions, assign new name
-taxa_mod <- as.data.frame(taxa_newnames)
-```
-
-```{r sort_taxa_table, echo=FALSE, eval=FALSE}
-# get row means
-taxa_mod$average <- apply(taxa_mod, 1, mean)
-# apply index to table to sort according to average relative abundance
-idx <- order(taxa_mod$average, decreasing = TRUE)
-taxa_sorted <- taxa_mod[idx, ]
-
-#set the value for relative abundance below which taxa should be "other"
-mythreshold<-0.005
-
-# create a column with the threshold
-taxa_sorted$highlow <- 
-  ifelse( taxa_sorted$average > mythreshold, 
-          rownames(taxa_sorted), 'Other' )
-```
-
-```{r manip_for_taxa_table, eval=FALSE, echo=FALSE}
-#manipulate data and conver to long format for making taxa plots
-#transpose again, need to get rid of last two columns (average and highlow)
-taxa_sorted_t <- t(taxa_sorted[,-(82:83)])
-#make highlow column into column names in transposed table
-colnames(taxa_sorted_t) <- taxa_sorted[,83]
-taxa_sorted_t_IDs <- cbind(taxa_meta_df$Experiment, taxa_meta_df$Day, taxa_meta_df$Treatment, taxa_sorted_t)
-
-taxa_melt_IDs <- melt(taxa_sorted_t_IDs, id.vars=c("V1", "V2", "V3")
-                    )
-
-#rownames(taxa_sorted_t) <- taxa_meta_SWI$SamplingDate
-taxa_sorted_melt <- melt(taxa_sorted_t)
-colnames(taxa_sorted_melt) <- c("Sample", "Class", "RelativeAbundance")
-
-
-
-# meta_melt_df <- cbind(taxa_meta_df$Experiment, taxa_meta_df$Day, 
-#                       taxa_meta_df$Treatment)
-# colnames(meta_melt_df) <- c("Experiment", "Day", "Treatment")
-# meta_melt <- melt(meta_melt_df)
-# colnames(meta_melt) <- c("Experiment", "Day", "Treatment")
-
-cdata <- ddply(taxa_sorted_melt, c("Sample", "Class"), summarise,
-               N = length(RelativeAbundance),
-               mean = mean(RelativeAbundance),
-               sd   = sd(RelativeAbundance),
-               se   = sd / sqrt(N)
-)
-
-```
-
- 
-```{r import_data_for_phyloseq, echo=FALSE, warning=FALSE, include=FALSE}
+```{r import_data_for_phyloseq, echo=FALSE, warning=FALSE, include=FALSE, eval=FALSE}
 ##workflow from here: https://github.com/joey711/phyloseq/issues/336
 biom_file = "table_even82638_json.biom" 
 map_file = "DOM.map.txt" 
@@ -382,65 +274,318 @@ get_taxa_unique(mydata, "Class")
 
 Taxa plots from each of the four experiments suggest that container effects are very strong: similar changes occur in both the control and treatment carboys. There does appear to be a difference in timing. By day 6, community composition in the DOM+ carboys has already shifted dramatically and closely resembles composition at day 10. Changes appear to occur more slowly in the control carboys with composition at day 6 representing a more intermediate state. This proposed lag effect can be seen in the August, September, and December experiments. The data from the October experiment are quite different, as discussed below.
 
-##August
-At the beginning of the August experiment, Pelagibacteria (alphaproteobacteria), slow-growing oligotrophs, were dominant, but were replaced by gammaproteobacteria (Collwellia) over the course of the experiment. 
 
-A very brief search for Collwellia yielded some interesting results:
-
-1. Collwellia were associated with the BP oil spill and supposedly digested alkanes and aromatics
-[linked phrase](http://www.ncbi.nlm.nih.gov/pubmed/22616650)
-[linked phrase](https://books.google.com/books?id=cQANAwAAQBAJ&pg=PA26&lpg=PA26&dq=Collwellia&source=bl&ots=fQ7kEClmmF&sig=Lz1kFGSRtdNgWGzvBZY0fXHBZlE&hl=en&sa=X&ved=0CDUQ6AEwBWoVChMIp879iIH8xgIV1xuSCh1xpQQp#v=onepage&q=Collwellia&f=false) 
-2. Bidle and Azam conducted experiments in which they allowed diatom detritus to be colonized by natural bacterial assemblages. In one experiment, the pos-incubation assemblage was characterized by y *Collwellia demingiae*. 
-[linked phrase](http://aslo.net/lo/toc/vol_46/issue_7/1606.pdf)
-3. The group contains some known psychrophiles
-[linked phrase](http://www.ncbi.nlm.nih.gov/pubmed/16043709)
-
-Flavobacteria also increased over the course of the experiment but did not comprise a large fraction of the community, even at day 10. 
-
-```{r taxa_plots_exp1, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+```{r taxa_plots_exp1, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family.", eval=FALSE}
 exp1 <- subset_samples(mydata, Experiment=="1")
 TopNOTUs_1 <- names(sort(taxa_sums(exp1), TRUE)[1:20])
 exp1a   <- prune_taxa(TopNOTUs_1, exp1)
 plot_bar(exp1a, x="Treatment", fill="Family", facet_grid=~Day, title="August")
 ```
 
-\newpage
-
-##September
-Similar trends (declining Pelagibacteria and increasing Collwellia) occurred during the September experiment. Chloroplast sequences (grey blocks) were present at the beginning of the experiment but had largely disappeared by day 10. Polaribacter (Flavobacteria blocks) was prevalent in both Control and DOM+ carboys on Day 10. Carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
-
-```{r taxa_plot_exp2, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+```{r taxa_plot_exp2, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family.", eval=FALSE}
 exp2 <- subset_samples(mydata, Experiment=="2")
 TopNOTUs_2 <- names(sort(taxa_sums(exp2), TRUE)[1:20])
 exp2a   <- prune_taxa(TopNOTUs_2, exp2)
 plot_bar(exp2a, x="Treatment", fill="Family", facet_grid=~Day, title="September")
 ```
 
-\newpage
-
-##October
-The results from the October experiment, which included an f/2+ treatment, are strange. At the beginning of the experiment, Rickettsiales comprises large fractions of all of the communities. The grey blocks are made up of Haptophyceae (chloroplasts) and Oceanospirillales. At day 6, we have no data from the control carboys. The f/2+ and DOM+ carboys are both dominated by flavobacteria. These flavobacter OTUs are classified as Polaribacter. The DOM+ carboys also have a significant block of Alteromonadales. On day 10, the control and f/2+ carboys are very similar, while the DOM+ carboys are dominated to a greater extent by Polaribacter. A few additional samples were collected on day 11, which I find to be suspect. My inclination for this experiment would be to only consider data from day 0 and day 10. Again, carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
-
-```{r taxa_plot_exp3, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+```{r taxa_plot_exp3, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family.", eval=FALSE}
 exp3 <- subset_samples(mydata, Experiment=="3")
 TopNOTUs_3 <- names(sort(taxa_sums(exp3), TRUE)[1:20])
 exp3a   <- prune_taxa(TopNOTUs_3, exp3)
 plot_bar(exp3a, x="Treatment", fill="Family", facet_grid=~Day, title="October")
 ```
 
-\newpage
-
-##December
-In the December experiment, the day 0 communities had a number of chloroplasts (grey blocks). Both Control and DOM+ carboys acquired Polaribacter (Flavobacteria) over the course of the experiment. Collwellia appeared in the DOM+ carboys but not the Control carboys.
-
-```{r taxa_plot_exp4, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family."}
+```{r taxa_plot_exp4, echo=FALSE, fig.cap="Changes in abundance (i.e. number of reads) for the twenty most prevalent OTUs over the course of the 10-day incubation period. OTUs are colored by Family.", eval=FALSE}
 exp4 <- subset_samples(mydata, Experiment=="4")
 TopNOTUs_4 <- names(sort(taxa_sums(exp4), TRUE)[1:20])
 exp4a   <- prune_taxa(TopNOTUs_4, exp4)
 plot_bar(exp4a, x="Treatment", fill="Family", facet_grid=~Day, title="December")
 ```
 
+```{r taxa_figure_general_setup, echo=FALSE}
+
+#function to transpose a data table
+tdt <- function(inpdt){
+  transposed <- t(inpdt[,-1,with=F]);
+  colnames(transposed) <- inpdt[[1]];
+  transposed <- data.table(transposed, keep.rownames=T);
+  setnames(transposed, 1, names(inpdt)[1]);
+  return(transposed);
+}
+
+# read in the taxa table and order by sample number
+taxaL5 <- fread("cdout_DOM_bac/taxa_plots/table_mc64271_sorted_L5.txt", skip=1)
+
+chlor <- grep('Chloroplast', x=taxaL5$"#OTU ID")
+idx_chlor <- grep('Chloroplast',x = taxaL5$"#OTU ID", invert=TRUE)
+taxaL5_bac <- taxaL5[i=idx_chlor]
+
+taxaL5.transpose <- tdt(taxaL5_bac)
+
+idx_taxa <- order(taxaL5.transpose$'#OTU ID', decreasing=FALSE)
+taxa_sorted <- taxaL5.transpose[idx_taxa]
+
+# convert to data frame and transpose again
+taxa_sorted.df <- as.data.frame(taxa_sorted)
+taxa_t <- t(taxa_sorted.df[,-1])
+colnames(taxa_t) <- taxa_sorted.df[,1]
+
+taxa_t.exp1 <- taxa_t[,(1:18)]
+taxa_t.exp2 <- taxa_t[,(19:36)]
+taxa_t.exp3 <- taxa_t[,(37:64)]
+taxa_t.exp4 <- taxa_t[,(65:81)]
+
+meta_sorted.df <- as.data.frame(meta_sorted)
+```
+
+##August
+At the beginning of the August experiment, Pelagibacteria (alphaproteobacteria), slow-growing oligotrophs, were dominant, but were replaced by gammaproteobacteria (Collwellia) over the course of the experiment. 
+
+A very brief search for Collwellia yielded some interesting results:
+
+1. Collwellia were associated with the BP oil spill and supposedly digested alkanes and aromatics
+[1](http://www.ncbi.nlm.nih.gov/pubmed/22616650)
+[2](https://books.google.com/books?id=cQANAwAAQBAJ&pg=PA26&lpg=PA26&dq=Collwellia&source=bl&ots=fQ7kEClmmF&sig=Lz1kFGSRtdNgWGzvBZY0fXHBZlE&hl=en&sa=X&ved=0CDUQ6AEwBWoVChMIp879iIH8xgIV1xuSCh1xpQQp#v=onepage&q=Collwellia&f=false)
+2. Bidle and Azam conducted experiments in which they allowed diatom detritus to be colonized by natural bacterial assemblages. In one experiment, the pos-incubation assemblage was characterized by y *Collwellia demingiae*. 
+[here](http://aslo.net/lo/toc/vol_46/issue_7/1606.pdf)
+3. The group contains some known psychrophiles
+[here] (http://www.ncbi.nlm.nih.gov/pubmed/16043709)
+
+Flavobacteria also increased over the course of the experiment but did not comprise a large fraction of the community, even at day 10. 
+
+
+```{r aug_exp1_taxa_plot, echo=FALSE, fig.cap="Relative abundance of most common taxa (family level) during DOM addition experiments."}
+
+# get row means
+taxa_t.exp1 <- as.data.frame(taxa_t.exp1)
+taxa_t.exp1$average <- apply(taxa_t.exp1, 1, mean)
+# apply index to table to sort according to average relative abundance
+idx1 <- order(taxa_t.exp1$average, decreasing = TRUE)
+taxa_sorted.exp1 <- taxa_t.exp1[idx1, ]
+
+# keep top 11 taxa, everything else is summed under heading "Other"
+Other1 <- colSums(taxa_sorted.exp1[(12:572),(1:18)])
+
+#transpose yet again, rename rows, keep only top 11 taxa and add Other column
+taxa_sorted_t1 <- t(taxa_sorted.exp1[,-(19)])
+#rownames(taxa_sorted_t1) <- meta_sorted$Day[1:18]
+taxa_sorted_t_other1 <-taxa_sorted_t1[,(1:11)]
+taxa_sorted_t_other1 <- cbind(taxa_sorted_t_other1, Other1)
+taxa_sorted_t_other1.df <- as.data.frame(taxa_sorted_t_other1)
+taxa_sorted_t_other1.df$Treatment <- meta_sorted.df$Treatment[(1:18)]
+taxa_sorted_t_other1.df$Day <-  meta_sorted.df$Day[(1:18)]
+
+m1 <- melt(taxa_sorted_t_other1.df, id=c("Treatment", "Day"), 
+      measured=colnames(taxa_sorted_t_other1.df[,(2:11)]))
+colnames(m1) <- c("Treatment","Day", "Family", "RelativeAbundance")
+
+#summarize data
+tdata1 <- ddply(m1, c("Treatment", "Day", "Family"), summarise,
+               N = length(RelativeAbundance),
+               mean = mean(RelativeAbundance),
+               sd   = sd(RelativeAbundance),
+               se   = sd / sqrt(N)
+)
+
+tdata1$Day <- as.factor(tdata1$Day)
+
+day_labeller <- function(var, value){
+  value <- as.character(value)
+  if (var=="Day") { 
+    value[value=="0"] <- "Day 0"
+    value[value=="6"]   <- "Day 6"
+    value[value=="10"]   <- "Day 10"
+  }
+  return(value)
+}
+
+
+p1 <- ggplot(data = tdata1, aes(x = Treatment, y = mean, fill = Family)) + 
+  geom_bar(stat="identity", color="black", size=0.1) +
+  scale_fill_brewer(palette="Paired",
+                   labels=c("Colwelliaceae",
+                            "Pelagibacteraceae", 
+                            "Flavobacteriaceae", 
+                            "Oceanospirillales-Other",
+                            "Rhodobacteraceae", 
+                            "Flavobacteriales-NS9",
+                            "Alpha-Other", 
+                            "Delta-SAR324", 
+                            "Nitrospinaceae",
+                            "Vibrionaceae",
+                            "Oceanospirillaceae",
+                            "Other"),
+                    name="Taxa",
+                   guide = guide_legend(reverse=TRUE)) +
+  ylab("Relative abundance") +
+  #ggtitle("August") +
+  xlab("") +
+  theme_bw() +
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(vjust=1))
+
+p1 + facet_grid(.~Day, labeller=day_labeller)
+
+```
+
 \newpage
+
+##September
+Similar trends (declining Pelagibacteria and increasing Collwellia) occurred during the September experiment. Polaribacter (Flavobacteria blocks) was prevalent in both Control and DOM+ carboys on Day 10. Carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
+
+```{r sept_exp2_taxa_plot, echo=FALSE, fig.cap="Relative abundance of most common taxa (family level) during DOM addition experiments."}
+
+# get row means
+taxa_t.exp2 <- as.data.frame(taxa_t.exp2) 
+taxa_t.exp2$average <- apply(taxa_t.exp2, 1, mean) #create a col containing row means
+# apply index to table to sort according to average relative abundance
+idx2 <- order(taxa_t.exp2$average, decreasing = TRUE)
+taxa_sorted.exp2 <- taxa_t.exp2[idx2, ] 
+
+# keep top 11 taxa, everything else is summed under heading "Other"
+Other2 <- colSums(taxa_sorted.exp2[(12:572),(1:18)]) #drop col19 (average)
+
+#transpose yet again, rename rows, keep only top 11 taxa and add Other column
+taxa_sorted_t2 <- t(taxa_sorted.exp2[,-(19)]) #transpose table w/o average column
+taxa_sorted_t_other2 <-taxa_sorted_t2[,(1:11)] #keep only the top 11 taxa
+taxa_sorted_t_other2 <- cbind(taxa_sorted_t_other2, Other2) #add Other to table
+taxa_sorted_t_other2.df <- 
+    as.data.frame(taxa_sorted_t_other2) #convert to df so later stuff works
+taxa_sorted_t_other2.df$Treatment <- meta_sorted.df$Treatment[(19:36)] #add info from metadata
+taxa_sorted_t_other2.df$Day <-  meta_sorted.df$Day[(19:36)]
+
+# convert data to long format to make barplot
+m2 <- melt(taxa_sorted_t_other2.df, id=c("Treatment", "Day"), 
+      measured=colnames(taxa_sorted_t_other2.df[,(2:11)]))
+colnames(m2) <- c("Treatment","Day", "Family", "RelativeAbundance")
+
+# summarize data
+tdata2 <- ddply(m2, c("Treatment", "Day", "Family"), summarise,
+               N = length(RelativeAbundance),
+               mean = mean(RelativeAbundance),
+               sd   = sd(RelativeAbundance),
+               se   = sd / sqrt(N)
+)
+
+tdata2$Day <- as.factor(tdata1$Day) #change day to actor so x-axis spacing is even
+
+# this function allows you to change facet grid labels
+day_labeller <- function(var, value){
+  value <- as.character(value)
+  if (var=="Day") { 
+    value[value=="0"] <- "Day 0"
+    value[value=="6"]   <- "Day 6"
+    value[value=="10"]   <- "Day 10"
+  }
+  return(value)
+}
+
+p2 <- ggplot(data = tdata2, aes(x = Treatment, y = mean, fill = Family)) + 
+  geom_bar(stat="identity", color="black", size=0.1) +
+  scale_fill_brewer(palette="Paired",
+                   labels=c("Colwelliaceae",
+                            "Pelagibacteraceae", 
+                            "Flavobacteriaceae",
+                            "Oceanospirillales-Other",
+                            "Rhodobacteraceae", 
+                            "Flavobacteriales-NS9", 
+                            "Alpha-Other", 
+                            "Nitrospinaceae", 
+                            "Delta-SAR324", 
+                            "Cryomorphaceae", 
+                            "Oceanospirillaceae",
+                            "Other"),
+                    name="Taxa",
+                   guide = guide_legend(reverse=TRUE)) +
+  ylab("Relative abundance") +
+  xlab("") +
+  #ggtitle("September") +
+  theme_bw() +
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(vjust=1))
+
+p2 + facet_grid(.~Day, labeller=day_labeller)
+
+```
+
+
+##October
+The results from the October experiment, which included an f/2+ treatment, are strange. At the beginning of the experiment, Rickettsiales comprises large fractions of all of the communities. The grey blocks are made up of Haptophyceae (chloroplasts) and Oceanospirillales. At day 6, we have no data from the control carboys. The f/2+ and DOM+ carboys are both dominated by flavobacteria. These flavobacter OTUs are classified as Polaribacter. The DOM+ carboys also have a significant block of Alteromonadales. On day 10, the control and f/2+ carboys are very similar, while the DOM+ carboys are dominated to a greater extent by Polaribacter. A few additional samples were collected on day 11, which I find to be suspect. My inclination for this experiment would be to only consider data from day 0 and day 10. Again, carbon from phytoplankton die-off (as suggested by disappearing chloroplast sequences) could account for some of the changes that occurred in the Control carboys.
+
+\newpage
+
+##December
+In the December experiment, the day 0 communities had a number of chloroplasts (grey blocks). Both Control and DOM+ carboys acquired Polaribacter (Flavobacteria) over the course of the experiment. Collwellia appeared in the DOM+ carboys but not the Control carboys.
+
+```{r dec_exp4_taxa_plot, echo=FALSE, fig.cap="Relative abundance of most common taxa (family level) during DOM addition experiments."}
+
+# get row means
+taxa_t.exp4 <- as.data.frame(taxa_t.exp4)
+taxa_t.exp4$average <- apply(taxa_t.exp4, 1, mean)
+# apply index to table to sort according to average relative abundance
+idx4 <- order(taxa_t.exp4$average, decreasing = TRUE)
+taxa_sorted.exp4 <- taxa_t.exp4[idx4, ]
+
+# keep top 11 taxa, everything else is summed under heading "Other"
+Other4 <- colSums(taxa_sorted.exp4[(12:572),(1:17)])
+
+
+#transpose yet again, rename rows, keep only top 11 taxa and add Other column
+taxa_sorted_t4 <- t(taxa_sorted.exp4[,(1:17)])
+taxa_sorted_t_other4 <-taxa_sorted_t4[,(1:11)]
+taxa_sorted_t_other4 <- cbind(taxa_sorted_t_other4, Other4)
+taxa_sorted_t_other4.df <- as.data.frame(taxa_sorted_t_other4)
+taxa_sorted_t_other4.df$Treatment <- meta_sorted.df$Treatment[(65:81)]
+taxa_sorted_t_other4.df$Day <-  meta_sorted.df$Day[(65:81)]
+
+m <- melt(taxa_sorted_t_other4.df, id=c("Treatment", "Day"), 
+      measured=colnames(taxa_sorted_t_other4.df[,(1:12)]))
+colnames(m) <- c("Treatment","Day", "Family", "RelativeAbundance")
+
+#summarize data
+tdata4 <- ddply(m, c("Treatment", "Day", "Family"), summarise,
+               N = length(RelativeAbundance),
+               mean = mean(RelativeAbundance),
+               sd   = sd(RelativeAbundance),
+               se   = sd / sqrt(N)
+)
+
+tdata4$Day <- as.factor(tdata4$Day)
+
+day_labeller <- function(var, value){
+  value <- as.character(value)
+  if (var=="Day") { 
+    value[value=="0"] <- "Day 0"
+    value[value=="6"]   <- "Day 6"
+    value[value=="10"]   <- "Day 10"
+  }
+  return(value)
+}
+
+
+p4 <- ggplot(data = tdata4, aes(x = Treatment, y = mean, fill = Family)) + 
+  geom_bar(stat="identity", colour="black", size=0.1) +
+  scale_fill_brewer(palette="Paired",
+                   labels=c("Flavobacteriaceae","Pelagibacteraceae", 
+                            "Rhodobacteraceae","Colwelliaceae",
+                              "Oceanospirillales-Other", "Oceanospirillaceae",
+                              "Alpha-Other","Altermonadales-Other", 
+                              "Piscirickettsiaceae", "Flammeovirgaceae",
+                              "Alteromonadaceae","Other"),
+                    name="Taxa",
+                   guide = guide_legend(reverse=TRUE)) +
+  ylab("Relative abundance") +
+  #ggtitle("December") +
+  xlab("") +
+  theme_bw() +
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(vjust=1))
+
+p4 + facet_grid(.~Day, labeller=day_labeller)
+
+```
+
 
 #NMDS
 
