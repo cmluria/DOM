@@ -93,6 +93,7 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 setwd("/Users/cmluria/Documents/Documents/Thesis Chapters/DOM/16S_library_analysis")
 
 otutable <- fread('cdout_DOM_bac/otu_table_mc2_DOM_even64271_bac_from_biom.txt', skip=1)
+otutable_bac <- otutable
 
 meta <- fread('DOM.map.txt')
 
@@ -100,16 +101,6 @@ meta <- fread('DOM.map.txt')
 idx_meta <- order(meta$'#SampleID', decreasing=FALSE)
 meta_sorted <- meta[idx_meta]
 
-```
-
-```{r remove_chloroplasts, echo=FALSE}
-#creating a table that has chloroplasts removed
-#first create index of all rows with "organelle"
-#then invert, to get index of rows without "organelle"
-#apply index to original table
-chlor <- grep('Chloroplast', x=otutable$taxonomy)
-idx_chlor <- grep('Chloroplast',x = otutable$taxonomy, invert=TRUE)
-otutable_bac <- otutable[i=idx_chlor]
 ```
 
 #Alpha Diversity
@@ -210,6 +201,75 @@ p4 <- ggplot(cdata4, aes(x=Timepoint, y=mean, colour=Treatment)) +
     #theme(legend.position="none")
    
 multiplot(p1, p2, p3, p4, cols=2)
+
+```
+
+```{r richness_aug_dec_multiplot}
+
+cdata <- ddply(diversitytable, c("Experiment", "Day", "Treatment"), summarise,
+               N = length(richness),
+               mean = mean(richness),
+               sd   = sd(richness),
+               se   = sd / sqrt(N)
+)
+
+cdata <- as.data.table(cdata)
+#cdata$Experiment <- as.factor(cdata$Experiment)
+cdata1 <- cdata[which(cdata$Experiment=="1")]
+cdata4 <- cdata[which(cdata$Experiment=="4")]
+
+
+p1 <- ggplot(cdata1, aes(x=Day, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Day", breaks=c(0,2,4,6,8,10)) +
+    scale_y_continuous(name="Richness") +
+    ggtitle("August") +
+    theme_bw() 
+   
+p4 <- ggplot(cdata4, aes(x=Day, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Day", breaks=c(0,2,4,6,8,10)) +
+    scale_y_continuous(name="Richness") +
+    ggtitle("December") +
+    theme_bw() 
+
+multiplot(p1, p4, cols=2)
+```
+
+```{r richness_aug_dec_facet}
+
+cdata <- ddply(diversitytable, c("Experiment", "Day", "Treatment"), summarise,
+               N = length(richness),
+               mean = mean(richness),
+               sd   = sd(richness),
+               se   = sd / sqrt(N)
+)
+
+cdata <- as.data.table(cdata)
+cdata14 <- cdata[which(cdata$Experiment=="1"|cdata$Experiment=="4")]
+
+exp_labeller <- function(var, value){
+  value <- as.character(value)
+  if (var=="Experiment") { 
+    value[value=="1"] <- "August"
+    value[value=="4"]   <- "December"
+    }
+  return(value)
+}
+
+p14 <- ggplot(cdata14, aes(x=Day, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Day", breaks=c(0,2,4,6,8,10)) +
+    scale_y_continuous(name="Richness") +
+    theme_bw()
+
+p14 + facet_grid(.~Experiment, labeller=exp_labeller)
 
 ```
 
@@ -964,4 +1024,38 @@ ggplot(data=NMDS.Exp1,aes(x,y,colour="Day")) +
   geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2), size=1, linetype=2) +
   geom_point(aes(shape=Treatment)) +
   theme_bw() 
+```
+
+
+```{r bp_aug_dec_facet}
+
+bpdata <- ddply(diversitytable, c("Experiment", "Day", "Treatment"), summarise,
+               N = length(Leucine),
+               mean = mean(Leucine),
+               sd   = sd(Leucine),
+               se   = sd / sqrt(N)
+)
+
+bpdata <- as.data.table(bpdata)
+bpdata14 <- bpdata[which(bpdata$Experiment=="1"|bpdata$Experiment=="4")]
+
+exp_labeller <- function(var, value){
+  value <- as.character(value)
+  if (var=="Experiment") { 
+    value[value=="1"] <- "August"
+    value[value=="4"]   <- "December"
+    }
+  return(value)
+}
+
+bp14 <- ggplot(bpdata14, aes(x=Day, y=mean, colour=Treatment)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(name="Day", breaks=c(0,2,4,6,8,10)) +
+    scale_y_continuous(name="Bacterial production (pM 3H-leucine/hr)") +
+    theme_bw()
+
+bp14 + facet_grid(.~Experiment, labeller=exp_labeller)
+
 ```
